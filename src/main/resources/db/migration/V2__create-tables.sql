@@ -1,0 +1,194 @@
+CREATE SEQUENCE SQ_USUARIOS
+    START WITH 1
+    INCREMENT BY 1
+    NOCACHE
+    NOCYCLE;
+
+CREATE TABLE T_SEM_USUARIOS (
+    USUARIO_ID INTEGER DEFAULT SQ_USUARIOS.NEXTVAL NOT NULL,
+    NOME VARCHAR2(100) NOT NULL,
+    EMAIL VARCHAR2(100) UNIQUE NOT NULL,
+    SENHA VARCHAR2(100) NOT NULL,
+    ROLE VARCHAR2(50) DEFAULT 'user'
+);
+
+CREATE TABLE t_sem_controladora (
+    cd_controladora            NUMBER NOT NULL,
+    dt_momento_evento          DATE NOT NULL,
+    fx_fluxo                   NUMBER NOT NULL,
+    t_sem_semaforo_cd_semaforo NUMBER NOT NULL,
+    t_sem_sensor_cd_sensor     NUMBER NOT NULL,
+    t_sem_disp_id_cd_disp      NUMBER
+);
+
+ALTER TABLE t_sem_controladora ADD CONSTRAINT t_sem_controladora_pk PRIMARY KEY ( cd_controladora );
+
+
+CREATE TABLE t_sem_dispositivo (
+    cd_dispositivo      NUMBER NOT NULL,
+    tx_descricao        NVARCHAR2(200) NOT NULL,
+    pr_prioridade_verde CHAR(1) NOT NULL
+);
+
+ALTER TABLE t_sem_dispositivo ADD CONSTRAINT t_sem_dispositivo_id_pk PRIMARY KEY ( cd_dispositivo );
+
+CREATE TABLE t_sem_semaforo (
+    cd_semaforo       NUMBER NOT NULL,
+    lg_logradouro     NVARCHAR2(200) NOT NULL,
+    lg_numero         NVARCHAR2(4) NOT NULL,
+    lg_cidade         VARCHAR2(50) NOT NULL,
+    lg_estado         NVARCHAR2(50) NOT NULL,
+    tm_tempo_verde    NUMBER NOT NULL,
+    tm_tempo_amarelo  NUMBER NOT NULL,
+    tm_tempo_vermelho NUMBER NOT NULL,
+    ds_ultima_acao    NVARCHAR2(20),
+    dt_ultima_acao    DATE,
+    tm_ultima_acao    NUMBER
+);
+
+ALTER TABLE t_sem_semaforo ADD CONSTRAINT t_sem_semaforo_pk PRIMARY KEY ( cd_semaforo );
+
+CREATE TABLE t_sem_sensor (
+    cd_sensor                  NUMBER NOT NULL,
+    tx_descricao               NVARCHAR2(200) NOT NULL,
+    t_sem_tipo_sen_cd_tipo_sen NUMBER NOT NULL
+);
+
+ALTER TABLE t_sem_sensor ADD CONSTRAINT t_sem_sensor_pk PRIMARY KEY ( cd_sensor );
+
+CREATE TABLE t_sem_tipo_sensor (
+    cd_tipo_sensor NUMBER NOT NULL,
+    tx_descricao   NVARCHAR2(200) NOT NULL
+);
+
+ALTER TABLE t_sem_tipo_sensor ADD CONSTRAINT t_sem_tipo_sensor_pk PRIMARY KEY ( cd_tipo_sensor );
+
+ALTER TABLE t_sem_controladora
+    ADD CONSTRAINT t_sem_control_t_sem_disp_id_fk FOREIGN KEY ( t_sem_disp_id_cd_disp )
+        REFERENCES t_sem_dispositivo ( cd_dispositivo );
+
+ALTER TABLE t_sem_controladora
+    ADD CONSTRAINT t_sem_control_t_sem_sem_fk FOREIGN KEY ( t_sem_semaforo_cd_semaforo )
+        REFERENCES t_sem_semaforo ( cd_semaforo );
+
+ALTER TABLE t_sem_controladora
+    ADD CONSTRAINT t_sem_control_t_sem_sensor_fk FOREIGN KEY ( t_sem_sensor_cd_sensor )
+        REFERENCES t_sem_sensor ( cd_sensor );
+
+ALTER TABLE t_sem_sensor
+    ADD CONSTRAINT t_sen_t_sem_tipo_sens_fk FOREIGN KEY ( t_sem_tipo_sen_cd_tipo_sen )
+        REFERENCES t_sem_tipo_sensor ( cd_tipo_sensor );
+
+CREATE SEQUENCE SQ_CD_CONTROLADORA
+INCREMENT BY 1
+START WITH 1
+MAXVALUE 999
+NOCACHE
+NOCYCLE;
+
+CREATE SEQUENCE SQ_CD_SEMAFORO
+INCREMENT BY 1
+START WITH 1
+MAXVALUE 999
+NOCACHE
+NOCYCLE;
+
+CREATE SEQUENCE SQ_CD_SENSOR
+INCREMENT BY 1
+START WITH 1
+MAXVALUE 999
+NOCACHE
+NOCYCLE;
+
+CREATE SEQUENCE SQ_CD_TIPO_SENSOR
+INCREMENT BY 1
+START WITH 1
+MAXVALUE 999
+NOCACHE
+NOCYCLE;
+
+CREATE SEQUENCE SQ_CD_DISPOSITIVO
+INCREMENT BY 1
+START WITH 1
+MAXVALUE 999
+NOCACHE
+NOCYCLE;
+
+/* TRIGGER PARA ATUALIZAR O TEMPO DE SINAL VERMELHO, AMARELO E VERDE
+DE ACORDO COM O TIPO DE EVENTO DE SENSOR QUE Ã‰ INSERIDO NA TABELA CONTROLADORA */
+
+CREATE OR REPLACE TRIGGER TG_EVENTO_CONTROLADORA
+AFTER INSERT ON T_SEM_CONTROLADORA
+FOR EACH ROW
+DECLARE
+    DATA_AGORA DATE;
+    TIPO_SENSOR NUMBER;
+    PRIORIDADE_VERDE CHAR(1);
+    ULTIMA_ACAO NVARCHAR2(20);
+    TEMPO_VERDE NUMBER;
+    TEMPO_AMARELO NUMBER;
+    TEMPO_VERMELHO NUMBER;
+    TEMPO_ULTIMA_ACAO NUMBER;
+BEGIN
+    -- ARAMAZENA A DATA DO EVENTO
+    DATA_AGORA := :NEW.DT_MOMENTO_EVENTO;
+
+    -- BUSCA O TIPO DE SENSOR QUE DISPAROU O EVENTO
+    SELECT T_SEM_TIPO_SEN_CD_TIPO_SEN INTO TIPO_SENSOR FROM T_SEM_SENSOR WHERE CD_SENSOR = :NEW.T_SEM_SENSOR_CD_SENSOR;
+
+    -- BUSCA A PRIORIDADE DE VEÃ�CULO OU PEDESTRE
+    SELECT PR_PRIORIDADE_VERDE INTO PRIORIDADE_VERDE FROM T_SEM_DISPOSITIVO WHERE CD_DISPOSITIVO = :NEW.T_SEM_DISP_ID_CD_DISP;
+
+    -- BUSCA OS TEMPOS ATUAIS DO SEMAFORO
+    SELECT
+        TM_TEMPO_VERDE,
+        TM_TEMPO_AMARELO,
+        TM_TEMPO_VERMELHO
+    INTO
+        TEMPO_VERDE,
+        TEMPO_AMARELO,
+        TEMPO_VERMELHO
+    FROM
+        T_SEM_SEMAFORO
+    WHERE
+        CD_SEMAFORO = :NEW.T_SEM_SEMAFORO_CD_SEMAFORO;
+
+    -- SETA AS ATUALIZAÃ‡Ã•ES NOS TEMPOS DO SEMAFORO DE ACORDO COM O TIPO DE SENSOR
+    IF TIPO_SENSOR = 4 THEN
+        ULTIMA_ACAO := 'FLUXO';
+        IF :NEW.FX_FLUXO > 30 THEN
+            TEMPO_VERDE := 180;
+            TEMPO_AMARELO := 4;
+            TEMPO_VERMELHO := 45;
+        ELSE
+            TEMPO_VERDE := 120;
+            TEMPO_AMARELO := 5;
+            TEMPO_VERMELHO := 60;
+        END IF;
+    ELSIF TIPO_SENSOR = 5 THEN
+        IF PRIORIDADE_VERDE = 'N' THEN
+            ULTIMA_ACAO := 'PEDESTRE';
+            TEMPO_ULTIMA_ACAO := 90;
+        ELSE
+            ULTIMA_ACAO := 'VEICULO';
+            TEMPO_ULTIMA_ACAO := 240;
+        END IF;
+    ELSE
+        ULTIMA_ACAO := 'CHUVA';
+        TEMPO_VERDE := 300;
+        TEMPO_AMARELO := 10;
+        TEMPO_VERMELHO := 60;
+    END IF;
+
+    -- ATUALIZA OS DADOS DO SEMAFORO DE ACORDO COM O QUE FOI ANALIZADO PELOS SENSORES
+    UPDATE T_SEM_SEMAFORO
+    SET DS_ULTIMA_ACAO = ULTIMA_ACAO,
+        DT_ULTIMA_ACAO = DATA_AGORA,
+        TM_ULTIMA_ACAO = TEMPO_ULTIMA_ACAO,
+        TM_TEMPO_VERDE = TEMPO_VERDE,
+        TM_TEMPO_AMARELO = TEMPO_AMARELO,
+        TM_TEMPO_VERMELHO = TEMPO_VERMELHO
+    WHERE
+        CD_SEMAFORO = :NEW.T_SEM_SEMAFORO_CD_SEMAFORO;
+
+END;
