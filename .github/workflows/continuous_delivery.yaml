@@ -20,7 +20,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
-          tags: index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fiap_fase6:${{ github.sha }}
+          tags: index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fiap-rm99236-fase6:${{ github.sha }}
           file: ./Dockerfile
   deploy:
     runs-on: ubuntu-latest
@@ -36,4 +36,4 @@ jobs:
           app-name: 'fiap-rm99236-fase6'
           slot-mame: 'production'
           publish-profile: ${{ secrets.AZURE_PROFILE }}
-          images: 'index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fiap_fase6:${{ github.sha }}'
+          images: 'index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fiap-rm99236-fase6:${{ github.sha }}'
